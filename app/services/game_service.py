@@ -43,8 +43,8 @@ class GameService:
             "current_streak": habit.current_streak,
             "is_new_best_streak": rewards["new_best_streak"]
         }
-    
-    def get_character_stats(self, character: Character) -> str:
+    @staticmethod
+    def get_character_stats(character: Character) -> str:
         """Форматирует статистику персонажа в красивый текст"""
         return (
             f"🎮 **Твой персонаж**\n\n"
@@ -56,8 +56,8 @@ class GameService:
             f"🎭 Харизма: {character.charisma}\n\n"
             f"🔮 Всего характеристик: {character.total_stats}"
         )
-    
-    def get_level_up_message(self, character: Character, increased_stat: StatType) -> str:
+    @staticmethod
+    def get_level_up_message(character: Character, increased_stat: StatType) -> str:
         """Сообщение о повышении уровня"""
         stat_emoji = character.get_stat_emoji(increased_stat)
         return (
@@ -65,3 +65,28 @@ class GameService:
             f"{stat_emoji} Твоя характеристика **{increased_stat.value}** увеличилась!\n"
             f"Продолжай в том же духе! 💫"
         )
+
+    def get_completion_message(self, rewards: Dict[str, Any]) -> str:
+        """Сообщение о выполнении привычки"""
+        habit = rewards["habit"]
+        character = rewards["character"]
+        stat_emoji = character.get_stat_emoji(rewards["stat_increased"])
+
+        message = (
+            f"✅ **Привычка выполнена!**\n\n"
+            f"🏆 {habit.name}\n"
+            f"⭐ +{rewards['xp_gained']} опыта\n"
+            f"{stat_emoji} +1 к {rewards['stat_increased'].value}\n"
+            f"🔥 Серия: {rewards['current_streak']} дней\n"
+        )
+
+        if rewards["streak_bonus"] > 0:
+            message += f"🎯 Бонус за серию: +{rewards['streak_bonus']} XP\n"
+
+        if rewards["is_new_best_streak"]:
+            message += f"🏅 Новый рекорд серии!\n"
+
+        if rewards["leveled_up"]:
+            message += f"\n🎊 {self.get_level_up_message(character, rewards['stat_increased'])}"
+
+        return message
