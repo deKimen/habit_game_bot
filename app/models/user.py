@@ -7,7 +7,9 @@ from app.db.database import Base
 
 
 class User(Base):
-    """Модель пользователя"""
+    """
+    Модель пользователя
+    """
     __tablename__ = "users"
     
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
@@ -26,7 +28,9 @@ class User(Base):
     
     @property
     def display_name(self) -> str:
-        """Возвращает отображаемое имя пользователя"""
+        """
+        Возвращает отображаемое имя пользователя
+        """
         if self.first_name:
             return self.first_name
         elif self.username:
