@@ -8,6 +8,7 @@ This package contains:
 - core: Application settings and configuration
 - utils: Utility functions and helpers
 """
+
 from app.core.config import settings
 __all__ = ["settings"]
 __version__ = "0.1.0"
