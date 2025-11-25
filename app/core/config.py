@@ -1,24 +1,33 @@
-from pydantic_settings import BaseSettings
-from typing import Optional
 import os
+from dotenv import load_dotenv
+
+# Загружаем переменные окружения
+load_dotenv()
 
 
-class Settings(BaseSettings):
-    """Настройки приложения"""
+class Settings:
+    """
+    Класс настроек
+    """
 
-    # Telegram Bot
-    BOT_TOKEN: str = "8576354707:AAFUEqYYHFhK6HALce5KfKr6XoBNw0Z2GGw"
+    @property
+    def BOT_TOKEN(self) -> str:
+        token = os.getenv("BOT_TOKEN")
+        if not token:
+            raise ValueError("BOT_TOKEN не найден в переменных окружения")
+        return token
 
-    # Database
-    DATABASE_URL: str = "sqlite:///./habit_bot.db"
+    @property
+    def DATABASE_URL(self) -> str:
+        return os.getenv("DATABASE_URL", "sqlite:///./habit_bot.db")
 
-    # Application
-    DEBUG: bool = False
-    LOG_LEVEL: str = "INFO"
+    @property
+    def DEBUG(self) -> bool:
+        return os.getenv("DEBUG", "False").lower() == "true"
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    @property
+    def LOG_LEVEL(self) -> str:
+        return os.getenv("LOG_LEVEL", "INFO")
 
 
 # Создание экземпляра настроек
