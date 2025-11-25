@@ -5,17 +5,17 @@ import os
 
 class Settings(BaseSettings):
     """Настройки приложения"""
-    
+
     # Telegram Bot
-    BOT_TOKEN: str
-    
+    BOT_TOKEN: str = "8576354707:AAFUEqYYHFhK6HALce5KfKr6XoBNw0Z2GGw"
+
     # Database
     DATABASE_URL: str = "sqlite:///./habit_bot.db"
-    
+
     # Application
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
-    
+
     class Config:
         env_file = ".env"
         case_sensitive = True
