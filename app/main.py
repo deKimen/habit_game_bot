@@ -225,7 +225,9 @@ class HabitBot:
 
     @staticmethod
     async def today_command(update: Update, context: Any) -> None:
-        """Обработчик команды /today"""
+        """
+        Обработчик команды /today
+        """
         user = update.effective_user
         db = next(get_db())
         try:
