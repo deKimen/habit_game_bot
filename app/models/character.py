@@ -1,6 +1,6 @@
 from enum import Enum
 from typing import Optional
-from sqlalchemy import Integer, String, DateTime
+from sqlalchemy import Integer, String, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
 import random
@@ -16,11 +16,13 @@ class StatType(str, Enum):
 
 
 class Character(Base):
-    """Модель персонажа пользователя"""
+    """
+    Модель персонажа пользователя
+    """
     __tablename__ = "characters"
     
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    user_id: Mapped[int] = mapped_column(Integer, unique=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), unique=True, index=True)
     
     # Основные характеристики
     level: Mapped[int] = mapped_column(Integer, default=1)
@@ -41,17 +43,21 @@ class Character(Base):
     
     @property
     def experience_to_next_level(self) -> int:
-        """Рассчитывает необходимый опыт для следующего уровня"""
+        """
+        Рассчитывает необходимый опыт для следующего уровня
+        """
         return self.level * 100
     
     @property
     def total_stats(self) -> int:
-        """Сумма всех характеристик"""
+        """
+        Сумма всех характеристик
+        """
         return self.strength + self.agility + self.intelligence + self.charisma
     
     def add_experience(self, xp: int) -> bool:
         """
-        Добавляет опыт персонажу
+        Добавляет опыт персонажу.
         Возвращает True, если был достигнут новый уровень
         """
         self.experience += xp
@@ -65,7 +71,9 @@ class Character(Base):
         return leveled_up
     
     def level_up(self) -> None:
-        """Повышает уровень персонажа"""
+        """
+        Повышает уровень персонажа
+        """
         required_xp = self.experience_to_next_level
         self.experience -= required_xp
         self.level += 1
@@ -76,7 +84,9 @@ class Character(Base):
         self.increase_stat(random_stat, 1)
     
     def increase_stat(self, stat_type: StatType, amount: int = 1) -> None:
-        """Увеличивает указанную характеристику"""
+        """
+        Увеличивает указанную характеристику
+        """
         if stat_type == StatType.STRENGTH:
             self.strength += amount
         elif stat_type == StatType.AGILITY:
@@ -87,9 +97,12 @@ class Character(Base):
             self.charisma += amount
         
         self.updated_at = datetime.utcnow()
-    
-    def get_stat_emoji(self, stat_type: StatType) -> str:
-        """Возвращает emoji для характеристики"""
+
+    @staticmethod
+    def get_stat_emoji( stat_type: StatType) -> str:
+        """
+        Возвращает emoji для характеристики
+        """
         emoji_map = {
             StatType.STRENGTH: "💪",
             StatType.AGILITY: "🎯", 
