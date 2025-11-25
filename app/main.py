@@ -338,22 +338,19 @@ class HabitBot:
         """
         self.application.run_polling()
 
-
 def main() -> None:
-    """Основная функция"""
+    """
+    Основная функция
+    """
     # Создание таблиц БД
     create_tables()
-
     # Получение токена бота
     bot_token = os.getenv("BOT_TOKEN")
     if not bot_token:
         raise ValueError("BOT_TOKEN не найден в переменных окружения")
-
     # Запуск бота
     bot = HabitBot(bot_token)
     print("🤖 Бот запущен...")
     bot.run()
-
-
 if __name__ == "__main__":
     main()
