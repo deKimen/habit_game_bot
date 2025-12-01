@@ -39,7 +39,7 @@ Habit Game Bot превращает скучное отслеживание пр
 # Установка
 1. **Клонирование репозитория:**
 bash
-git clone https://github.com/yourusername/habit-gamification-bot.git
+git clone https://github.com/deKimen/habit-gamification-bot.git
 cd habit-gamification-bot
 
 2. Создание виртуального окружения:
@@ -238,7 +238,7 @@ pytest --cov=app --cov-report=html tests/
 # Установка для разработки:
 
 bash
-git clone https://github.com/yourusername/habit-gamification-bot.git
+git clone https://github.com/deKimen/habit-gamification-bot.git
 cd habit-gamification-bot
 python -m venv venv
 source venv/bin/activate
