@@ -5,7 +5,7 @@ from typing import List
 from sqlalchemy.orm import Session
 from app.db.database import SessionLocal
 from app.services.reminder_service import ReminderService
-from app.bot.handlers import send_reminder_message
+
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,6 @@ class ReminderScheduler:
         """
         Запускает планировщик
         """
-
         self.is_running = True
         logger.info("Reminder scheduler started")
         while self.is_running:

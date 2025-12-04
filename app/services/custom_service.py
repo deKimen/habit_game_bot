@@ -1,6 +1,6 @@
 from typing import List, Optional, Dict, Any
+from datetime import datetime
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
 
 from app.models.customization import (
     Customization, CustomizationType, UserCustomization, DEFAULT_CUSTOMIZATIONS
