@@ -10,9 +10,11 @@ This package contains services that handle:
 from app.services.user_service import UserService
 from app.services.game_service import GameService
 from app.services.habit_service import HabitService
+from app.services.achievement_service import AchievementService
 
 __all__ = [
     "UserService",
     "GameService",
-    "HabitService"
+    "HabitService",
+    "AchievementService"
 ]
