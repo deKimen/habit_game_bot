@@ -1,38 +1,38 @@
 from typing import Dict, Any
 from sqlalchemy.orm import Session
-
 from app.models.character import Character, StatType
 from app.models.habit import Habit
+from app.services.achievement_service import AchievementService
+from app.utils.achievement_formatters import format_achievement_unlock
 
 
 class GameService:
-    """Сервис игровой логики"""
-    
+    """
+    Сервис игровой логики
+    """
+
     def __init__(self, db: Session):
         self.db = db
-    
+        self.achievement_service = AchievementService(db)
+
     def complete_habit(self, habit: Habit) -> Dict[str, Any]:
         """
         Обрабатывает выполнение привычки и выдает награды
         """
-        # Получаем персонажа пользователя
+
         character = self.db.query(Character).filter(Character.user_id == habit.user_id).first()
         if not character:
             raise ValueError("Персонаж не найден")
-        
-        # Отмечаем привычку выполненной
         rewards = habit.mark_completed()
-        
-        # Начисляем награды персонажу
         total_xp = rewards["xp"] + rewards["streak_bonus"]
         leveled_up = character.add_experience(total_xp)
-        
-        # Увеличиваем характеристику
         character.increase_stat(rewards["stat_bonus"])
-        
-        # Сохраняем изменения
+        unlocked_achievements = self._check_achievements_after_completion(
+            user_id=habit.user_id,
+            habit=habit,
+            character=character
+        )
         self.db.commit()
-        
         return {
             "character": character,
             "habit": habit,
@@ -41,11 +41,48 @@ class GameService:
             "leveled_up": leveled_up,
             "new_level": character.level if leveled_up else None,
             "current_streak": habit.current_streak,
-            "is_new_best_streak": rewards["new_best_streak"]
+            "is_new_best_streak": rewards["new_best_streak"],
+            "streak_bonus": rewards["streak_bonus"],
+            "unlocked_achievements": unlocked_achievements
         }
-    @staticmethod
-    def get_character_stats(character: Character) -> str:
-        """Форматирует статистику персонажа в красивый текст"""
+
+    def _check_achievements_after_completion(self, user_id: int, habit: Habit, character: Character) -> List[Dict]:
+        """
+        Проверяет все достижения после выполнения привычки
+        """
+        unlocked = []
+
+        # 1. Проверяем достижения за серии
+        streak_achievements = self.achievement_service.check_streak_achievements(
+            user_id, habit.current_streak
+        )
+        unlocked.extend([{"achievement": a, "type": "streak"} for a in streak_achievements])
+
+        # 2. Проверяем достижения за уровни
+        level_achievements = self.achievement_service.check_level_achievements(
+            user_id, character.level
+        )
+        unlocked.extend([{"achievement": a, "type": "level"} for a in level_achievements])
+
+        # 3. Проверяем достижения за статистику
+        stats = {
+            StatType.STRENGTH: character.strength,
+            StatType.AGILITY: character.agility,
+            StatType.INTELLIGENCE: character.intelligence,
+            StatType.CHARISMA: character.charisma
+        }
+        stat_achievements = self.achievement_service.check_stat_achievements(user_id, stats)
+        unlocked.extend([{"achievement": a, "type": "stat"} for a in stat_achievements])
+        return unlocked
+
+
+    def get_character_stats(self, character: Character, user_id: int) -> str:
+        """
+        Форматирует статистику персонажа в красивый текст
+        """
+        # Получаем прогресс по достижениям
+        achievement_service = AchievementService(self.db)
+        achievement_progress = achievement_service.get_achievement_progress(user_id)
         return (
             f"🎮 **Твой персонаж**\n\n"
             f"📊 Уровень: {character.level}\n"
@@ -55,10 +92,15 @@ class GameService:
             f"📚 Интеллект: {character.intelligence}\n"
             f"🎭 Харизма: {character.charisma}\n\n"
             f"🔮 Всего характеристик: {character.total_stats}"
+            f"🏆 Достижения: {achievement_progress['completed']}/{achievement_progress['total']} "
+            f"({achievement_progress['completion_rate']:.1f}%)"
         )
+
     @staticmethod
     def get_level_up_message(character: Character, increased_stat: StatType) -> str:
-        """Сообщение о повышении уровня"""
+        """
+        Сообщение о повышении уровня
+        """
         stat_emoji = character.get_stat_emoji(increased_stat)
         return (
             f"🎉 **ПОЗДРАВЛЯЮ! Ты достиг {character.level} уровня!** 🎉\n\n"
@@ -67,26 +109,23 @@ class GameService:
         )
 
     def get_completion_message(self, rewards: Dict[str, Any]) -> str:
-        """Сообщение о выполнении привычки"""
+        """
+        Сообщение о выполнении привычки
+        """
         habit = rewards["habit"]
         character = rewards["character"]
         stat_emoji = character.get_stat_emoji(rewards["stat_increased"])
-
         message = (
-            f"✅ **Привычка выполнена!**\n\n"
+            f"✅ **Задание выполнено!**\n\n"
             f"🏆 {habit.name}\n"
             f"⭐ +{rewards['xp_gained']} опыта\n"
             f"{stat_emoji} +1 к {rewards['stat_increased'].value}\n"
             f"🔥 Серия: {rewards['current_streak']} дней\n"
         )
-
         if rewards["streak_bonus"] > 0:
             message += f"🎯 Бонус за серию: +{rewards['streak_bonus']} XP\n"
-
         if rewards["is_new_best_streak"]:
             message += f"🏅 Новый рекорд серии!\n"
-
         if rewards["leveled_up"]:
             message += f"\n🎊 {self.get_level_up_message(character, rewards['stat_increased'])}"
-
         return message
