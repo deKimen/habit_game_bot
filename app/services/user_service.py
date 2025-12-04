@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.models.user import User
 from app.models.character import Character
 from app.services.achieve_service import AchievementService
-
+from app.services.custom_service import CustomizationService
 
 class UserService:
     """
@@ -47,6 +47,8 @@ class UserService:
         self.db.add(character)
         achievement_service = AchievementService(self.db)
         achievement_service.initialize_user_achievements(user.id)
+        customization_service = CustomizationService(self.db)
+        customization_service.initialize_user_customizations(user.id)
         self.db.commit()
         self.db.refresh(user)
         return user

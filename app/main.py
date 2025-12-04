@@ -2,6 +2,7 @@ import sys
 import os
 import logging
 from typing import Any
+from datetime import time
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler,ContextTypes, MessageHandler, filters
@@ -18,6 +19,13 @@ from app.utils.formatters import format_habits_list, format_today_habits
 from app.services.reminder_service import ReminderService
 from app.services.remind_schedule import ReminderScheduler
 from app.models.reminder import ReminderFrequency
+from app.services.custom_service import CustomizationService
+from app.models.customization import CustomizationType, Customization
+from app.utils.custom_formatters import (
+    format_customizations_list,
+    format_active_customizations,
+    format_customization_unlock
+)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -33,7 +41,6 @@ class HabitBot:
     """
     Основной класс бота
     """
-
     def __init__(self, token: str):
         self.application = Application.builder().token(token).build()
         self.reminder_scheduler = ReminderScheduler(self.application)
@@ -43,7 +50,6 @@ class HabitBot:
         """
         Настройка обработчиков команд
         """
-
         self.application.add_handler(CommandHandler("start", self.start_command))
         self.application.add_handler(CommandHandler("stats", self.stats_command))
         self.application.add_handler(CommandHandler("help", self.help_command))
@@ -60,13 +66,16 @@ class HabitBot:
         self.application.add_handler(CommandHandler("newreminder", self.newreminder_command))
         self.application.add_handler(CommandHandler("togglereminder", self.togglereminder_command))
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
+        # Команды кастомизации
+        self.application.add_handler(CommandHandler("customize", self.customize_command))
+        self.application.add_handler(CommandHandler("activate", self.activate_command))
+        self.application.add_handler(CommandHandler("look", self.look_command))
 
     @staticmethod
     async def start_command(update: Update, context: Any) -> None:
         """
         Обработчик команды /start
         """
-
         user = update.effective_user
         db = next(get_db())
         try:
@@ -104,7 +113,6 @@ class HabitBot:
         """
         Обработчик команды /stats
         """
-
         user = update.effective_user
         db = next(get_db())
         try:
@@ -115,8 +123,10 @@ class HabitBot:
                 return
             game_service = GameService(db)
             habit_service = HabitService(db)
+            customization_service = CustomizationService(db)
             character_stats_text = game_service.get_character_stats(db_user.character)
             habit_stats = habit_service.get_habit_stats(user.id)
+            active_customs = customization_service.get_active_customizations(user.id)
             stats_text = (
                 f"{character_stats_text}\n\n"
                 f"📊 **Статистика привычек:**\n"
@@ -125,6 +135,11 @@ class HabitBot:
                 f"✅ Всего выполнений: {habit_stats['total_completions']}\n"
                 f"📅 На сегодня: {habit_stats['today_habits']}"
             )
+            if active_customs:
+                stats_text += "\n\n🎭 **Текущий вид:**"
+                for custom_type, custom_data in active_customs.items():
+                    type_name = "Внешность" if custom_type == CustomizationType.SKIN else "Титул"
+                    stats_text += f"\n{custom_data['icon']} {type_name}: {custom_data['name']}"
             await update.message.reply_text(stats_text, parse_mode='Markdown')
         except Exception as e:
             logger.error("Error in stats command: %s", e)
@@ -137,7 +152,6 @@ class HabitBot:
         """
         Обработчик команды /newhabit
         """
-
         user = update.effective_user
         db = next(get_db())
         try:
@@ -210,7 +224,6 @@ class HabitBot:
         """
         Обработчик команды /habits
         """
-
         user = update.effective_user
         db = next(get_db())
         try:
@@ -234,7 +247,6 @@ class HabitBot:
         """
         Обработчик команды /today
         """
-
         user = update.effective_user
         db = next(get_db())
         try:
@@ -258,7 +270,6 @@ class HabitBot:
         """
         Обработчик команды /done
         """
-
         user = update.effective_user
         db = next(get_db())
         try:
@@ -301,7 +312,6 @@ class HabitBot:
         """
         Обработчик команды /help
         """
-
         help_text = (
             "🎮 **Habit Gamification Bot - Помощь**\n\n"
             "Доступные команды:\n\n"
@@ -325,7 +335,6 @@ class HabitBot:
         """
         Обработчик команды /achievements
         """
-
         user = update.effective_user
         db = next(get_db())
         try:
@@ -349,7 +358,6 @@ class HabitBot:
         """
         Обработчик команды /progress
         """
-
         user = update.effective_user
         db = next(get_db())
         try:
@@ -376,11 +384,129 @@ class HabitBot:
             db.close()
 
     @staticmethod
+    async def customize_command(update: Update, context: Any) -> None:
+        """
+        Обработчик команды /customize
+        """
+        user = update.effective_user
+        db = next(get_db())
+        try:
+            user_service = UserService(db)
+            db_user = user_service.get_user_with_character(user.id)
+            if not db_user:
+                await update.message.reply_text("Сначала используйте /start для создания персонажа")
+                return
+            customization_service = CustomizationService(db)
+            if context.args:
+                try:
+                    custom_type = CustomizationType(context.args[0].lower())
+                    customizations = customization_service.get_available_customizations(
+                        db_user.id, custom_type
+                    )
+                    if not customizations:
+                        await update.message.reply_text("❌ Кастомизации этого типа не найдены")
+                        return
+                    custom_text = format_customizations_list(customizations, custom_type)
+                    await update.message.reply_text(custom_text, parse_mode='Markdown')
+                    return
+                except ValueError:
+                    pass
+            help_text = (
+                "🎨 **Кастомизация персонажа**\n\n"
+                "Измени внешний вид своего персонажа!\n\n"
+                "**Типы кастомизации:**\n"
+                "• skin - скины/внешность персонажа\n"
+                "• title - титулы и звания\n"
+                "• badge - значки и достижения\n\n"
+                "**Команды:**\n"
+                "• /customize skin - показать скины\n"
+                "• /customize title - показать титулы\n"
+                "• /customize badge - показать значки\n"
+                "• /activate <ID> - активировать кастомизацию\n"
+                "• /look - посмотреть текущий вид\n\n"
+                "**Пример:** `/customize skin`"
+            )
+            await update.message.reply_text(help_text, parse_mode='Markdown')
+        except Exception as e:
+            logger.error("Error in customize command: %s", e)
+            await update.message.reply_text("❌ Произошла ошибка")
+        finally:
+            db.close()
+
+    @staticmethod
+    async def activate_command(update: Update, context: Any) -> None:
+        """
+        Обработчик команды /activate
+        """
+        user = update.effective_user
+        db = next(get_db())
+        try:
+            if not context.args:
+                await update.message.reply_text("❌ Укажи ID кастомизации. Пример: /activate 1")
+                return
+            try:
+                customization_id = int(context.args[0])
+            except ValueError:
+                await update.message.reply_text("❌ ID должен быть числом")
+                return
+            user_service = UserService(db)
+            db_user = user_service.get_user_with_character(user.id)
+            if not db_user:
+                await update.message.reply_text("Сначала используйте /start для создания персонажа")
+                return
+            customization_service = CustomizationService(db)
+            success = customization_service.activate_customization(db_user.id, customization_id)
+            if not success:
+                await update.message.reply_text(
+                    "❌ Не удалось активировать кастомизацию.\n"
+                    "Возможно, она не разблокирована или не существует."
+                )
+                return
+            customization = db.query(Customization).filter(Customization.id == customization_id).first()
+            if customization:
+                success_text = (
+                    f"✅ **Кастомизация активирована!**\n\n"
+                    f"{customization.icon} **{customization.name}**\n"
+                    f"📝 {customization.description}\n\n"
+                    f"🎨 Твой персонаж теперь выглядит по-новому!"
+                )
+                await update.message.reply_text(success_text, parse_mode='Markdown')
+            else:
+                await update.message.reply_text("✅ Кастомизация активирована!")
+        except Exception as e:
+            logger.error("Error in activate command: %s", e)
+            await update.message.reply_text("❌ Произошла ошибка")
+        finally:
+            db.close()
+
+    @staticmethod
+    async def look_command(update: Update, context: Any) -> None:
+        """
+        Обработчик команды /look
+        """
+        user = update.effective_user
+        db = next(get_db())
+        try:
+            user_service = UserService(db)
+            db_user = user_service.get_user_with_character(user.id)
+            if not db_user:
+                await update.message.reply_text("Сначала используйте /start для создания персонажа")
+                return
+            customization_service = CustomizationService(db)
+            active_customs = customization_service.get_active_customizations(db_user.id)
+            look_text = format_active_customizations(active_customs)
+            await update.message.reply_text(look_text, parse_mode='Markdown')
+        except Exception as e:
+            logger.error("Error in look command: %s", e)
+            await update.message.reply_text("❌ Произошла ошибка")
+        finally:
+            db.close()
+
+    @staticmethod
     async def handle_message(update: Update, context: Any) -> None:
         """
         Обработчик текстовых сообщений
         """
-
         message_text = (
             "🤖 Я бот для трекинга привычек!\n\n"
             "Используй команды:\n"
@@ -399,7 +525,6 @@ class HabitBot:
         """
         Обработчик команды /reminders
         """
-
         user = update.effective_user
         db = next(get_db())
         try:
@@ -445,7 +570,6 @@ class HabitBot:
         """
         Обработчик команды /newreminder
         """
-
         user = update.effective_user
         db = next(get_db())
         try:
@@ -466,7 +590,6 @@ class HabitBot:
                 )
                 await update.message.reply_text(help_text, parse_mode='Markdown')
                 return
-
             try:
                 time_str = context.args[0]
                 hours, minutes = map(int, time_str.split(':'))
@@ -504,11 +627,9 @@ class HabitBot:
         """
         Обработчик команды /togglereminder
         """
-
         user = update.effective_user
         db = next(get_db())
         try:
-            # Проверяем аргументы
             if not context.args:
                 await update.message.reply_text("❌ Укажи ID напоминания. Пример: /togglereminder 1")
                 return
@@ -542,10 +663,8 @@ class HabitBot:
         import asyncio
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-
         # Создаем задачу для планировщика
         scheduler_task = loop.create_task(self.reminder_scheduler.start())
-
         try:
             self.application.run_polling()
         except KeyboardInterrupt:
@@ -569,5 +688,6 @@ def main() -> None:
     bot = HabitBot(bot_token)
     print("🤖 Бот запущен...")
     bot.run()
+
 if __name__ == "__main__":
     main()

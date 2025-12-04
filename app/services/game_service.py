@@ -2,8 +2,9 @@ from typing import Dict, Any
 from sqlalchemy.orm import Session
 from app.models.character import Character, StatType
 from app.models.habit import Habit
-from app.services.achievement_service import AchievementService
-from app.utils.achievement_formatters import format_achievement_unlock
+from app.services.achieve_service import AchievementService
+from app.services.custom_service import CustomizationService
+from app.utils.achieve_formatters import format_achievement_unlock
 
 
 class GameService:
@@ -19,7 +20,6 @@ class GameService:
         """
         Обрабатывает выполнение привычки и выдает награды
         """
-
         character = self.db.query(Character).filter(Character.user_id == habit.user_id).first()
         if not character:
             raise ValueError("Персонаж не найден")
@@ -32,6 +32,12 @@ class GameService:
             habit=habit,
             character=character
         )
+        unlocked_customizations = []
+        if leveled_up:
+            customization_service = CustomizationService(self.db)
+            unlocked_customizations = customization_service.check_and_unlock_customizations(
+                habit.user_id, character
+            )
         self.db.commit()
         return {
             "character": character,
@@ -43,7 +49,8 @@ class GameService:
             "current_streak": habit.current_streak,
             "is_new_best_streak": rewards["new_best_streak"],
             "streak_bonus": rewards["streak_bonus"],
-            "unlocked_achievements": unlocked_achievements
+            "unlocked_achievements": unlocked_achievements,
+            "unlocked_customizations": unlocked_customizations
         }
 
     def _check_achievements_after_completion(self, user_id: int, habit: Habit, character: Character) -> List[Dict]:
@@ -80,7 +87,6 @@ class GameService:
         """
         Форматирует статистику персонажа в красивый текст
         """
-        # Получаем прогресс по достижениям
         achievement_service = AchievementService(self.db)
         achievement_progress = achievement_service.get_achievement_progress(user_id)
         return (
@@ -110,7 +116,7 @@ class GameService:
 
     def get_completion_message(self, rewards: Dict[str, Any]) -> str:
         """
-        Сообщение о выполнении привычки
+        Сообщение о выполнении привычки с достижениями и кастомизацией
         """
         habit = rewards["habit"]
         character = rewards["character"]
@@ -122,6 +128,11 @@ class GameService:
             f"{stat_emoji} +1 к {rewards['stat_increased'].value}\n"
             f"🔥 Серия: {rewards['current_streak']} дней\n"
         )
+        if rewards.get("unlocked_customizations"):
+            message += "\n🎨 **Разблокированы кастомизации:**\n"
+            for custom_data in rewards["unlocked_customizations"][:2]:  # Показываем только первые 2
+                customization = custom_data["customization"]
+                message += f"• {customization.icon} {customization.name}\n"
         if rewards["streak_bonus"] > 0:
             message += f"🎯 Бонус за серию: +{rewards['streak_bonus']} XP\n"
         if rewards["is_new_best_streak"]:
