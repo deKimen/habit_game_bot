@@ -12,13 +12,13 @@ from app.services.game_service import GameService
 from app.services.habit_service import HabitService
 from app.models.habit import HabitType, StatType
 from app.utils.formatters import format_habits_list, format_today_habits
+from app.services.achievement_service import AchievementService
+from app.utils.achievement_formatters import format_achievements_list, format_achievement_unlock
+from app.utils.formatters import format_habits_list, format_today_habits
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Загрузка переменных окружения
 load_dotenv()
-
-# Настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -39,17 +39,19 @@ class HabitBot:
         """
         Настройка обработчиков команд
         """
+
         self.application.add_handler(CommandHandler("start", self.start_command))
         self.application.add_handler(CommandHandler("stats", self.stats_command))
         self.application.add_handler(CommandHandler("help", self.help_command))
-
-        # Команды привычек
         self.application.add_handler(CommandHandler("newhabit", self.newhabit_command))
         self.application.add_handler(CommandHandler("habits", self.habits_command))
         self.application.add_handler(CommandHandler("today", self.today_command))
         self.application.add_handler(CommandHandler("done", self.done_command))
 
-        # Обработчик текстовых сообщений
+        # Новые команды достижений
+        self.application.add_handler(CommandHandler("achievements", self.achievements_command))
+        self.application.add_handler(CommandHandler("progress", self.progress_command))
+
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
 
     @staticmethod
@@ -57,6 +59,7 @@ class HabitBot:
         """
         Обработчик команды /start
         """
+
         user = update.effective_user
         db = next(get_db())
         try:
@@ -94,6 +97,7 @@ class HabitBot:
         """
         Обработчик команды /stats
         """
+
         user = update.effective_user
         db = next(get_db())
         try:
@@ -126,16 +130,15 @@ class HabitBot:
         """
         Обработчик команды /newhabit
         """
+
         user = update.effective_user
         db = next(get_db())
         try:
-            # Проверяем, что пользователь существует
             user_service = UserService(db)
             db_user = user_service.get_user_with_character(user.id)
             if not db_user:
                 await update.message.reply_text("Сначала используйте /start для создания персонажа")
                 return
-            # Если нет аргументов, показываем инструкцию
             if not context.args:
                 help_text = (
                     "📝 **Добавление новой привычки**\n\n"
@@ -154,27 +157,23 @@ class HabitBot:
                 )
                 await update.message.reply_text(help_text, parse_mode='Markdown')
                 return
-            # Парсим аргументы
             if len(context.args) < 3:
                 await update.message.reply_text("❌ Недостаточно аргументов. Используй /newhabit для справки.")
                 return
             name = context.args[0].replace('_', ' ')
             habit_type_str = context.args[1].lower()
             stat_str = context.args[2].lower()
-            # Валидация типа привычки
             try:
                 habit_type = HabitType(habit_type_str)
             except ValueError:
                 await update.message.reply_text("❌ Неверный тип привычки. Используй: daily, weekly или custom")
                 return
-            # Валидация характеристики
             try:
                 stat_bonus = StatType(stat_str)
             except ValueError:
                 await update.message.reply_text(
                     "❌ Неверная характеристика. Используй: strength, agility, intelligence или charisma")
                 return
-            # Создаем привычку
             habit_service = HabitService(db)
             habit = habit_service.create_habit(
                 user_id=db_user.id,
@@ -182,7 +181,6 @@ class HabitBot:
                 habit_type=habit_type,
                 stat_bonus=stat_bonus
             )
-            # Формируем сообщение об успехе
             stat_emoji = db_user.character.get_stat_emoji(stat_bonus)
             success_text = (
                 f"✅ **Привычка добавлена!**\n\n"
@@ -205,6 +203,7 @@ class HabitBot:
         """
         Обработчик команды /habits
         """
+
         user = update.effective_user
         db = next(get_db())
         try:
@@ -228,6 +227,7 @@ class HabitBot:
         """
         Обработчик команды /today
         """
+
         user = update.effective_user
         db = next(get_db())
         try:
@@ -251,10 +251,10 @@ class HabitBot:
         """
         Обработчик команды /done
         """
+
         user = update.effective_user
         db = next(get_db())
         try:
-            # Проверяем аргументы
             if not context.args:
                 await update.message.reply_text("❌ Укажи ID привычки. Пример: /done 1")
                 return
@@ -263,13 +263,11 @@ class HabitBot:
             except ValueError:
                 await update.message.reply_text("❌ ID привычки должен быть числом. Пример: /done 1")
                 return
-            # Проверяем пользователя
             user_service = UserService(db)
             db_user = user_service.get_user_with_character(user.id)
             if not db_user:
                 await update.message.reply_text("Сначала используйте /start для создания персонажа")
                 return
-            # Получаем привычку
             habit_service = HabitService(db)
             habit = habit_service.get_habit_by_id(habit_id, db_user.id)
             if not habit:
@@ -281,10 +279,8 @@ class HabitBot:
             if not habit.is_due_today():
                 await update.message.reply_text("⏳ Эту привычку не нужно выполнять сегодня")
                 return
-            # Отмечаем выполнение
             game_service = GameService(db)
             rewards = game_service.complete_habit(habit)
-            # Отправляем сообщение о наградах
             completion_text = game_service.get_completion_message(rewards)
             await update.message.reply_text(completion_text, parse_mode='Markdown')
         except Exception as e:
@@ -298,6 +294,7 @@ class HabitBot:
         """
         Обработчик команды /help
         """
+
         help_text = (
             "🎮 **Habit Gamification Bot - Помощь**\n\n"
             "Доступные команды:\n\n"
@@ -315,6 +312,61 @@ class HabitBot:
             "🎭 Харизма - общение, творчество"
         )
         await update.message.reply_text(help_text, parse_mode='Markdown')
+
+    @staticmethod
+    async def achievements_command(update: Update, context: Any) -> None:
+        """
+        Обработчик команды /achievements
+        """
+
+        user = update.effective_user
+        db = next(get_db())
+        try:
+            user_service = UserService(db)
+            db_user = user_service.get_user_with_character(user.id)
+            if not db_user:
+                await update.message.reply_text("Сначала используйте /start для создания персонажа")
+                return
+            achievement_service = AchievementService(db)
+            achievements = achievement_service.get_user_achievements(user.id)
+            achievements_text = format_achievements_list(achievements)
+            await update.message.reply_text(achievements_text, parse_mode='Markdown')
+        except Exception as e:
+            logger.error("Error in achievements command: %s", e)
+            await update.message.reply_text("❌ Произошла ошибка при получении достижений")
+        finally:
+            db.close()
+
+    @staticmethod
+    async def progress_command(update: Update, context: Any) -> None:
+        """
+        Обработчик команды /progress
+        """
+
+        user = update.effective_user
+        db = next(get_db())
+        try:
+            user_service = UserService(db)
+            db_user = user_service.get_user_with_character(user.id)
+            if not db_user:
+                await update.message.reply_text("Сначала используйте /start для создания персонажа")
+                return
+            achievement_service = AchievementService(db)
+            progress = achievement_service.get_achievement_progress(user.id)
+            progress_text = (
+                f"📊 **Прогресс по достижениям:**\n\n"
+                f"🎯 Всего достижений: {progress['total']}\n"
+                f"✅ Получено: {progress['completed']}\n"
+                f"⏳ В процессе: {progress['in_progress']}\n"
+                f"📈 Завершено: {progress['completion_rate']:.1f}%\n\n"
+                f"💡 Используй /achievements чтобы увидеть список"
+            )
+            await update.message.reply_text(progress_text, parse_mode='Markdown')
+        except Exception as e:
+            logger.error("Error in progress command: %s", e)
+            await update.message.reply_text("❌ Произошла ошибка при получении прогресса")
+        finally:
+            db.close()
 
     @staticmethod
     async def handle_message(update: Update, context: Any) -> None:
