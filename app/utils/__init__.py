@@ -14,7 +14,7 @@ __all__ = [
     "validate_habit_name",
     "validate_xp_value",
     "format_habits_list",
-    "format_today_habits",
+    "format_today_habits"
     "format_achievements_list",
     "format_achievement_unlock",
     "format_achievement"
