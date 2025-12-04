@@ -12,9 +12,12 @@ from app.services.game_service import GameService
 from app.services.habit_service import HabitService
 from app.models.habit import HabitType, StatType
 from app.utils.formatters import format_habits_list, format_today_habits
-from app.services.achievement_service import AchievementService
-from app.utils.achievement_formatters import format_achievements_list, format_achievement_unlock
+from app.services.achieve_service import AchievementService
+from app.utils.achieve_formatters import format_achievements_list, format_achievement_unlock
 from app.utils.formatters import format_habits_list, format_today_habits
+from app.services.reminder_service import ReminderService
+from app.services.remind_schedule import ReminderScheduler
+from app.models.reminder import ReminderFrequency
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -33,6 +36,7 @@ class HabitBot:
 
     def __init__(self, token: str):
         self.application = Application.builder().token(token).build()
+        self.reminder_scheduler = ReminderScheduler(self.application)
         self._setup_handlers()
 
     def _setup_handlers(self) -> None:
@@ -51,7 +55,10 @@ class HabitBot:
         # Новые команды достижений
         self.application.add_handler(CommandHandler("achievements", self.achievements_command))
         self.application.add_handler(CommandHandler("progress", self.progress_command))
-
+        #Команды напоминаний
+        self.application.add_handler(CommandHandler("reminders", self.reminders_command))
+        self.application.add_handler(CommandHandler("newreminder", self.newreminder_command))
+        self.application.add_handler(CommandHandler("togglereminder", self.togglereminder_command))
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
 
     @staticmethod
@@ -373,6 +380,7 @@ class HabitBot:
         """
         Обработчик текстовых сообщений
         """
+
         message_text = (
             "🤖 Я бот для трекинга привычек!\n\n"
             "Используй команды:\n"
@@ -386,11 +394,166 @@ class HabitBot:
         )
         await update.message.reply_text(message_text)
 
+    @staticmethod
+    async def reminders_command(update: Update, context: Any) -> None:
+        """
+        Обработчик команды /reminders
+        """
+
+        user = update.effective_user
+        db = next(get_db())
+        try:
+            user_service = UserService(db)
+            db_user = user_service.get_user_with_character(user.id)
+            if not db_user:
+                await update.message.reply_text("Сначала используйте /start для создания персонажа")
+                return
+            reminder_service = ReminderService(db)
+            user_reminders = reminder_service.get_user_reminders(db_user.id)
+            if not user_reminders:
+                help_text = (
+                    "🔔 **Управление напоминаниями**\n\n"
+                    "У тебя пока нет напоминаний.\n\n"
+                    "**Доступные команды:**\n"
+                    "• /newreminder - создать новое напоминание\n"
+                    "• /remindhabit - напоминание для привычки\n"
+                    "• /togglereminder - вкл/выкл напоминание\n"
+                    "• /deletereminder - удалить напоминание"
+                )
+                await update.message.reply_text(help_text, parse_mode='Markdown')
+                return
+            lines = ["🔔 **Твои напоминания:**\n"]
+            for reminder in user_reminders:
+                status_emoji = "✅" if reminder.is_active else "❌"
+                time_str = reminder.get_formatted_time()
+                habit_info = f" для '{reminder.habit.name}'" if reminder.habit else ""
+                lines.append(
+                    f"{status_emoji} **{time_str}**{habit_info}\n"
+                    f"   📝 {reminder.message}\n"
+                    f"   📅 {reminder.frequency.value} | ID: {reminder.id}"
+                )
+            lines.append("\n💡 Используй /togglereminder <ID> для включения/выключения")
+            await update.message.reply_text("\n".join(lines), parse_mode='Markdown')
+        except Exception as e:
+            logger.error("Error in reminders command: %s", e)
+            await update.message.reply_text("❌ Произошла ошибка при получении напоминаний")
+        finally:
+            db.close()
+
+    @staticmethod
+    async def newreminder_command(update: Update, context: Any) -> None:
+        """
+        Обработчик команды /newreminder
+        """
+
+        user = update.effective_user
+        db = next(get_db())
+        try:
+            user_service = UserService(db)
+            db_user = user_service.get_user_with_character(user.id)
+            if not db_user:
+                await update.message.reply_text("Сначала используйте /start для создания персонажа")
+                return
+            if len(context.args) < 2:
+                help_text = (
+                    "⏰ **Создание напоминания**\n\n"
+                    "Используй: /newreminder <время> <сообщение>\n\n"
+                    "**Время в формате:** HH:MM\n"
+                    "**Примеры:**\n"
+                    "`/newreminder 09:00 Доброе утро! Пора выполнять привычки!`\n"
+                    "`/newreminder 20:00 Подведи итоги дня`\n\n"
+                    "💡 Напоминания будут приходить ежедневно."
+                )
+                await update.message.reply_text(help_text, parse_mode='Markdown')
+                return
+
+            try:
+                time_str = context.args[0]
+                hours, minutes = map(int, time_str.split(':'))
+                if not (0 <= hours < 24 and 0 <= minutes < 60):
+                    raise ValueError
+                reminder_time = time(hour=hours, minute=minutes)
+            except (ValueError, IndexError):
+                await update.message.reply_text("❌ Неверный формат времени. Используй HH:MM")
+                return
+            message = ' '.join(context.args[1:])
+            reminder_service = ReminderService(db)
+            reminder = reminder_service.create_reminder(
+                user_id=db_user.id,
+                message=message,
+                reminder_time=reminder_time,
+                frequency=ReminderFrequency.DAILY
+            )
+            success_text = (
+                f"✅ **Напоминание создано!**\n\n"
+                f"⏰ Время: {reminder.get_formatted_time()}\n"
+                f"📝 Сообщение: {reminder.message}\n"
+                f"📅 Частота: ежедневно\n"
+                f"🔢 ID: {reminder.id}\n\n"
+                f"💡 Используй /togglereminder {reminder.id} чтобы включить/выключить"
+            )
+            await update.message.reply_text(success_text, parse_mode='Markdown')
+        except Exception as e:
+            logger.error("Error in newreminder command: %s", e)
+            await update.message.reply_text("❌ Произошла ошибка при создании напоминания")
+        finally:
+            db.close()
+
+    @staticmethod
+    async def togglereminder_command(update: Update, context: Any) -> None:
+        """
+        Обработчик команды /togglereminder
+        """
+
+        user = update.effective_user
+        db = next(get_db())
+        try:
+            # Проверяем аргументы
+            if not context.args:
+                await update.message.reply_text("❌ Укажи ID напоминания. Пример: /togglereminder 1")
+                return
+            try:
+                reminder_id = int(context.args[0])
+            except ValueError:
+                await update.message.reply_text("❌ ID должен быть числом")
+                return
+            user_service = UserService(db)
+            db_user = user_service.get_user_with_character(user.id)
+            if not db_user:
+                await update.message.reply_text("Сначала используйте /start для создания персонажа")
+                return
+            reminder_service = ReminderService(db)
+            reminder = reminder_service.toggle_reminder(reminder_id, db_user.id)
+            if not reminder:
+                await update.message.reply_text("❌ Напоминание не найдено")
+                return
+            status = "включено" if reminder.is_active else "выключено"
+            await update.message.reply_text(f"✅ Напоминание {status}!")
+        except Exception as e:
+            logger.error("Error in togglereminder command: %s", e)
+            await update.message.reply_text("❌ Произошла ошибка")
+        finally:
+            db.close()
+
     def run(self) -> None:
         """
         Запуск бота
         """
-        self.application.run_polling()
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        # Создаем задачу для планировщика
+        scheduler_task = loop.create_task(self.reminder_scheduler.start())
+
+        try:
+            self.application.run_polling()
+        except KeyboardInterrupt:
+            print("\n🛑 Останавливаем бота...")
+        finally:
+            loop.run_until_complete(self.reminder_scheduler.stop())
+            scheduler_task.cancel()
+            loop.close()
 
 def main() -> None:
     """

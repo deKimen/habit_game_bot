@@ -2,7 +2,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 from app.models.user import User
 from app.models.character import Character
-from app.services.achievement_service import AchievementService
+from app.services.achieve_service import AchievementService
 
 
 class UserService:
