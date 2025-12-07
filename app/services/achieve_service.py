@@ -1,6 +1,6 @@
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
-from app.models.achievement import Achievement, AchievementType, DEFAULT_ACHIEVEMENTS
+from app.models.achievements import Achievement, AchievementType, DEFAULT_ACHIEVEMENTS
 from app.models.character import StatType
 
 

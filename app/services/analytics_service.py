@@ -1,17 +1,15 @@
 import io
 import base64
-from datetime import datetime, date, timedelta
-from typing import List, Dict, Any, Optional, Tuple
+from datetime import date, timedelta
+from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, extract
+from sqlalchemy import func
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
-import numpy as np
 
 from app.models.stats import DailyStats
-from app.models.habit import Habit, HabitType, StatType
-from app.models.achievements import Achievement
+from app.models.habit import Habit, StatType
 from app.services.habit_service import HabitService
 from app.services.achieve_service import AchievementService
 

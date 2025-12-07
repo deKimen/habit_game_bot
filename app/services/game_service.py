@@ -4,7 +4,6 @@ from app.models.character import Character, StatType
 from app.models.habit import Habit
 from app.services.achieve_service import AchievementService
 from app.services.custom_service import CustomizationService
-from app.utils.achieve_formatters import format_achievement_unlock
 
 
 class GameService:
