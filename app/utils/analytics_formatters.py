@@ -1,7 +1,5 @@
-from typing import Dict, Any, List, Optional
-import base64
-import io
-from datetime import datetime, date, timedelta
+from typing import Dict, Any
+from datetime import datetime
 
 
 def format_weekly_stats(stats_data: Dict[str, Any]) -> str:

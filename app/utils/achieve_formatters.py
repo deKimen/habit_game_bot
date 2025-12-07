@@ -1,5 +1,5 @@
 from typing import List
-from app.models.achievement import Achievement
+from app.models.achievements import Achievement
 
 
 def format_achievement(achievement: Achievement) -> str:
