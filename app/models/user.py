@@ -25,7 +25,11 @@ class User(Base):
     # Связи
     character: Mapped["Character"] = relationship("Character", back_populates="user", uselist=False)
     habits: Mapped[List["Habit"]] = relationship("Habit", back_populates="user")
-    
+    achievements: Mapped[List["Achievement"]] = relationship("Achievement",
+                                                             back_populates="user")
+    customizations: Mapped[List["UserCustomization"]] = relationship("UserCustomization",
+                                                                     back_populates="user")
+
     @property
     def display_name(self) -> str:
         """
