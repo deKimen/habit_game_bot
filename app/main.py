@@ -1,3 +1,5 @@
+import base64
+import io
 import sys
 import os
 import logging
@@ -25,6 +27,13 @@ from app.utils.custom_formatters import (
     format_customizations_list,
     format_active_customizations,
     format_customization_unlock
+)
+from app.services.analytics_service import AnalyticsService
+from app.utils.analytics_formatters import (
+    format_weekly_stats,
+    format_monthly_stats,
+    format_habits_analytics,
+    format_analytics_summary
 )
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -61,15 +70,23 @@ class HabitBot:
         # Новые команды достижений
         self.application.add_handler(CommandHandler("achievements", self.achievements_command))
         self.application.add_handler(CommandHandler("progress", self.progress_command))
+
         #Команды напоминаний
         self.application.add_handler(CommandHandler("reminders", self.reminders_command))
         self.application.add_handler(CommandHandler("newreminder", self.newreminder_command))
         self.application.add_handler(CommandHandler("togglereminder", self.togglereminder_command))
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
+
         # Команды кастомизации
         self.application.add_handler(CommandHandler("customize", self.customize_command))
         self.application.add_handler(CommandHandler("activate", self.activate_command))
         self.application.add_handler(CommandHandler("look", self.look_command))
+
+        # Команды аналитики
+        self.application.add_handler(CommandHandler("analytics", self.analytics_command))
+        self.application.add_handler(CommandHandler("statsweekly", self.stats_weekly_command))
+        self.application.add_handler(CommandHandler("statsmonthly", self.stats_monthly_command))
+        self.application.add_handler(CommandHandler("habitsstats", self.habits_stats_command))
 
     @staticmethod
     async def start_command(update: Update, context: Any) -> None:
@@ -91,7 +108,7 @@ class HabitBot:
             welcome_text = (
                 f"Привет, {db_user.display_name}! 👋\n\n"
                 f"Добро пожаловать в **Habit Gamification Bot**! 🎮\n\n"
-                f"Здесь ты можешь прокачивать своего персонажа, выполняя полезные привычки!\n\n"
+                f"Здесь ты можешь прокачивать своего персонажа, приобретая полезные привычки!\n\n"
                 f"{stats_text}\n\n"
                 f"📚 **Основные команды:**\n"
                 f"/newhabit - добавить привычку\n"
@@ -653,6 +670,117 @@ class HabitBot:
         except Exception as e:
             logger.error("Error in togglereminder command: %s", e)
             await update.message.reply_text("❌ Произошла ошибка")
+        finally:
+            db.close()
+
+    @staticmethod
+    async def analytics_command(update: Update, context: Any) -> None:
+        """
+        Обработчик команды /analytics
+        """
+        user = update.effective_user
+        db = next(get_db())
+        try:
+            user_service = UserService(db)
+            db_user = user_service.get_user_with_character(user.id)
+            if not db_user:
+                await update.message.reply_text("Сначала используйте /start для создания персонажа")
+                return
+            analytics_service = AnalyticsService(db)
+            weekly_chart = analytics_service.create_completion_chart(db_user.id, "weekly")
+            progress_chart = analytics_service.create_progress_chart(db_user.id)
+            if not weekly_chart or not progress_chart:
+                await update.message.reply_text(
+                    "📊 **Аналитика**\n\n"
+                    "Собери больше данных для аналитики! "
+                    "Выполняй привычки несколько дней подряд."
+                )
+                return
+            await update.message.reply_photo(
+                photo=io.BytesIO(base64.b64decode(weekly_chart)),
+                caption="📈 Выполнение привычек за неделю"
+            )
+            await update.message.reply_photo(
+                photo=io.BytesIO(base64.b64decode(progress_chart)),
+                caption="📊 Прогресс прокачки персонажа"
+            )
+            summary_text = format_analytics_summary(db_user.id, analytics_service)
+            await update.message.reply_text(summary_text, parse_mode='Markdown')
+        except Exception as e:
+            logger.error("Error in analytics command: %s", e)
+            await update.message.reply_text(
+                "❌ Не удалось создать аналитику.\n"
+                "Убедись что установлены matplotlib и seaborn."
+            )
+        finally:
+            db.close()
+
+    @staticmethod
+    async def stats_weekly_command(update: Update, context: Any) -> None:
+        """
+        Обработчик команды /statsweekly
+        """
+        user = update.effective_user
+        db = next(get_db())
+        try:
+            user_service = UserService(db)
+            db_user = user_service.get_user_with_character(user.id)
+            if not db_user:
+                await update.message.reply_text("Сначала используйте /start для создания персонажа")
+                return
+            analytics_service = AnalyticsService(db)
+            weekly_stats = analytics_service.get_weekly_stats(db_user.id)
+            weekly_text = format_weekly_stats(weekly_stats)
+            await update.message.reply_text(weekly_text, parse_mode='Markdown')
+        except Exception as e:
+            logger.error("Error in stats_weekly command: %s", e)
+            await update.message.reply_text("❌ Произошла ошибка при получении статистики")
+        finally:
+            db.close()
+
+    @staticmethod
+    async def stats_monthly_command(update: Update, context: Any) -> None:
+        """
+        Обработчик команды /statsmonthly
+        """
+        user = update.effective_user
+        db = next(get_db())
+        try:
+            user_service = UserService(db)
+            db_user = user_service.get_user_with_character(user.id)
+            if not db_user:
+                await update.message.reply_text("Сначала используйте /start для создания персонажа")
+                return
+            analytics_service = AnalyticsService(db)
+            monthly_stats = analytics_service.get_monthly_stats(db_user.id)
+            monthly_text = format_monthly_stats(monthly_stats)
+            await update.message.reply_text(monthly_text, parse_mode='Markdown')
+        except Exception as e:
+            logger.error("Error in stats_monthly command: %s", e)
+            await update.message.reply_text("❌ Произошла ошибка при получении статистики")
+        finally:
+            db.close()
+
+    @staticmethod
+    async def habits_stats_command(update: Update, context: Any) -> None:
+        """
+        Обработчик команды /habitsstats
+        """
+        user = update.effective_user
+        db = next(get_db())
+        try:
+            user_service = UserService(db)
+            db_user = user_service.get_user_with_character(user.id)
+            if not db_user:
+                await update.message.reply_text("Сначала используйте /start для создания персонажа")
+                return
+            analytics_service = AnalyticsService(db)
+            habits_analytics = analytics_service.get_habits_analytics(db_user.id)
+            habits_text = format_habits_analytics(habits_analytics)
+            await update.message.reply_text(habits_text, parse_mode='Markdown')
+        except Exception as e:
+            logger.error("Error in habits_stats command: %s", e)
+            await update.message.reply_text("❌ Произошла ошибка при получении статистики")
         finally:
             db.close()
 
