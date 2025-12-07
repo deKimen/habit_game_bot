@@ -7,16 +7,15 @@ from typing import Any
 from datetime import time
 from dotenv import load_dotenv
 from telegram import Update
-from telegram.ext import Application, CommandHandler,ContextTypes, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 from app.db.database import create_tables, get_db
 from app.services.user_service import UserService
 from app.services.game_service import GameService
 from app.services.habit_service import HabitService
 from app.models.habit import HabitType, StatType
-from app.utils.formatters import format_habits_list, format_today_habits
 from app.services.achieve_service import AchievementService
-from app.utils.achieve_formatters import format_achievements_list, format_achievement_unlock
+from app.utils.achieve_formatters import format_achievements_list
 from app.utils.formatters import format_habits_list, format_today_habits
 from app.services.reminder_service import ReminderService
 from app.services.remind_schedule import ReminderScheduler
@@ -25,8 +24,7 @@ from app.services.custom_service import CustomizationService
 from app.models.customization import CustomizationType, Customization
 from app.utils.custom_formatters import (
     format_customizations_list,
-    format_active_customizations,
-    format_customization_unlock
+    format_active_customizations
 )
 from app.services.analytics_service import AnalyticsService
 from app.utils.analytics_formatters import (
